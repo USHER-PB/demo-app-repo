@@ -1,28 +1,26 @@
-name: 🚀 CI — Build & Push Docker Image
+name: 🚀 Professional CI — Build & Trigger Deployment
 
-# Triggers on every push to 'main'
-# After this runs → register the repo in ArgoCD UI → ArgoCD deploys from k8s/deployment.yaml
 on:
   push:
-    branches: ["master"]
+    branches: ["main"]
 
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
+  # 🔗 Link to your second repository (GITOPS REPO)
+  GITOPS_REPO: "USHER-PB/demo-gitops-repo"
 
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
     permissions:
-      contents: read     # Read the source code
-      packages: write    # Push image to GitHub Container Registry (GHCR)
+      contents: read     # Read this repo
+      packages: write    # Push to GHCR
 
     steps:
-      # 1. 📥 Checkout the code
-      - name: Checkout Code
+      - name: Checkout App Code
         uses: actions/checkout@v4
 
-      # 2. 🔑 Login to GitHub Container Registry
       - name: Log in to GHCR
         uses: docker/login-action@v3
         with:
@@ -30,8 +28,6 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # 3. 🏷️ Generate image tags
-      #    Creates: ghcr.io/username/demo-app:sha-abc1234  AND  :latest
       - name: Extract Docker Metadata
         id: meta
         uses: docker/metadata-action@v5
@@ -41,31 +37,44 @@ jobs:
             type=sha,prefix=sha-,format=short
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
 
-      # 4. 🏗️ Set up Docker Buildx (for efficient image builds)
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # 5. 🚢 Build the Docker image and push to GHCR
       - name: Build and Push Docker Image
+        id: push
         uses: docker/build-push-action@v5
         with:
           context: .
           push: true
           tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # 6. ✅ Summary
-      - name: Print Summary
+  update-gitops-manifest:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+      # 1. 📂 Checkout the GITOPS repository
+      #    This uses a Personal Access Token (PAT) to allow cross-repo writing
+      - name: Checkout GitOps Repo
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.GITOPS_REPO }}
+          token: ${{ secrets.GITOPS_REPO_PAT }}
+          path: gitops-repo
+
+      # 2. 📝 Update the image tag in deployment.yaml
+      - name: Update Manifest
         run: |
-          echo "======================================"
-          echo "✅ Image pushed to GHCR successfully!"
-          echo "--------------------------------------"
-          echo "Tags:"
-          echo "${{ steps.meta.outputs.tags }}"
-          echo "======================================"
-          echo ""
-          echo "Next step: Register this repo in ArgoCD UI"
-          echo "  → Settings → Repositories → Add repo"
-          echo "  → Applications → New App → Path: k8s"
+          NEW_IMAGE="${{ env.REGISTRY }}/${{ github.repository_owner }}/$(basename ${{ github.repository }}):sha-$(echo ${{ github.sha }} | cut -c1-7)"
+          NEW_IMAGE=$(echo $NEW_IMAGE | tr '[:upper:]' '[:lower:]')
+          
+          echo "✍️ Bumping image to: $NEW_IMAGE"
+          sed -i "s|image: .*|image: $NEW_IMAGE|g" gitops-repo/deployment.yaml
+          
+          cd gitops-repo
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add deployment.yaml
+          git commit -m "🚀 Auto-deploy: update image to sha-${{ github.sha }}" || echo "No changes to commit"
+          git push

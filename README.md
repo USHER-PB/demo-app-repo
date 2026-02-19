@@ -1,6 +1,6 @@
-# Demo App — GitOps CD Pipeline
+# Demo App — Professional GitOps CI Repo
 
-A demo application showing how teams deploy apps automatically using GitHub Actions + ArgoCD.
+This is the **Application Source Code** repository. It handles the **CI (Continuous Integration)** part of the professional Two-Repo GitOps workflow.
 
 ---
 
@@ -10,27 +10,21 @@ A demo application showing how teams deploy apps automatically using GitHub Acti
 demo-app-repo/
   src/main.py                        ← Application code (Python Flask)
   Dockerfile                         ← How to build the Docker image
-  k8s/deployment.yaml                ← Kubernetes manifests (deployment + service)
-  .github/workflows/deploy.yaml      ← CI Pipeline: builds & pushes Docker image on every push
+  .github/workflows/deploy.yaml      ← CI Pipeline: builds/pushes image & updates GitOps repo
 ```
+
+> [!NOTE]
+> There are **NO Kubernetes manifests** in this repo. In a professional setup, manifests live in a dedicated **GitOps Repo** for security and clean separation of concerns.
 
 ---
 
-## ⚙️ How It Works
+## ⚙️ How It Works (The Professional Flow)
 
-```
-Developer pushes code to GitHub
-        ↓
-GitHub Actions runs automatically:
-  → Builds Docker image
-  → Pushes image to GHCR (ghcr.io/USERNAME/demo-app:sha-xxxxx)
-        ↓
-ArgoCD (managed externally by DevOps) detects the new image
-        ↓
-ArgoCD deploys the new version to the Kubernetes cluster
-        ↓
-App is live. No manual steps.
-```
+1.  **Code Push:** Developer pushes a change to this repository.
+2.  **CI Run:** GitHub Actions builds a new Docker image with a unique SHA tag.
+3.  **Image Push:** The image is pushed to **GitHub Container Registry (GHCR)**.
+4.  **GitOps Trigger:** The pipeline then clones the **`demo-gitops-repo`**, updates its `deployment.yaml` with the new image tag, and pushes the change.
+5.  **ArgoCD Sync:** ArgoCD (watching the GitOps repo) detects the change and automatically deploys the new version to the cluster.
 
 ---
 
@@ -38,52 +32,23 @@ App is live. No manual steps.
 
 ### Step 1 — Push this repo to GitHub
 ```bash
+cd /home/usherking/projects/demo-app-repo
 git init
 git add .
-git commit -m "Initial commit"
-git remote add origin https://github.com/YOUR_USERNAME/demo-app-repo.git
+git commit -m "feat: initial app code and professional CI pipeline"
+git remote add origin https://github.com/USHER-PB/demo-app-repo.git
 git push -u origin main
 ```
 
-### Step 2 — Enable GitHub Actions write permissions
-Go to: **Repo → Settings → Actions → General → Workflow permissions → Read and write** ✅
-
-### Step 3 — Replace image reference
-In `k8s/deployment.yaml`, replace `REPLACE_WITH_YOUR_GITHUB_USERNAME` with your actual GitHub username.
-
-### Step 4 — Trigger the pipeline
-Push any code change to `main`:
-```bash
-echo "# update" >> README.md
-git add . && git commit -m "trigger pipeline" && git push
-```
-
-Watch GitHub Actions build and push the image automatically.
+### Step 2 — Configure Cross-Repo Access (CRITICAL)
+For this repo to update the **GitOps Repo**, it needs a Personal Access Token (PAT):
+1.  **Generate a PAT:** Go to GitHub Settings → Developer settings → PAT (classic) → Generate token with **`repo`** scope.
+2.  **Add Secret:** Go to THIS repo's **Settings → Secrets and variables → Actions**.
+3.  **Create Secret:** Name it **`GITOPS_REPO_PAT`** and paste your token.
 
 ---
 
-## 🎯 DevOps Setup (Done Once — Not by the Developer)
-
-The DevOps engineer connects this repo to ArgoCD via the **ArgoCD UI**:
-
-1. **Settings → Repositories → Connect Repo**
-   - Type: HTTPS
-   - URL: `https://github.com/USERNAME/demo-app-repo`
-   - GitHub Token: (generate from GitHub → Settings → Developer settings → PAT)
-
-2. **Applications → New Application**
-   - Repo URL: same as above
-   - Path: `k8s`
-   - Cluster: target spoke cluster
-   - Namespace: `demo-app`
-   - Sync Policy: **Automatic** ✅
-
-ArgoCD will now watch the repo and deploy every new image automatically.
-
----
-
-## 🔄 Supported Manifest Formats
-
-This demo uses plain k8s manifests. Teams can also use:
-- **Kustomize** — add a `kustomization.yaml` file, ArgoCD detects it automatically
-- **Helm** — add a `Chart.yaml` file, ArgoCD detects it automatically
+## 🎯 Implementation Notes
+- **Language:** Python 3.9 (Flask)
+- **Container Registry:** GHCR (ghcr.io)
+- **Deployment Strategy:** GitOps (Application/Infrastructure parity)
