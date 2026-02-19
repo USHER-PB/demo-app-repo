@@ -2,7 +2,7 @@ name: 🚀 Professional CI — Build & Trigger Deployment
 
 on:
   push:
-    branches: ["main"]
+    branches: ["master"]
 
 env:
   REGISTRY: ghcr.io
