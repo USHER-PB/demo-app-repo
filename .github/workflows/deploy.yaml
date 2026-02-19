@@ -4,7 +4,7 @@ name: 🚀 CI — Build & Push Docker Image
 # After this runs → register the repo in ArgoCD UI → ArgoCD deploys from k8s/deployment.yaml
 on:
   push:
-    branches: ["main"]
+    branches: ["master"]
 
 env:
   REGISTRY: ghcr.io
