@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: demo-app
+  labels:
+    app: demo-app
+  annotations:
+    # 🤖 ArgoCD Image Updater: automatically detects new images pushed to GHCR
+    # and updates this deployment without any manual intervention
+    argocd-image-updater.argoproj.io/image-list: demo-app=ghcr.io/REPLACE_WITH_YOUR_GITHUB_USERNAME/demo-app
+    argocd-image-updater.argoproj.io/demo-app.update-strategy: latest
+    argocd-image-updater.argoproj.io/demo-app.tag-match: "^sha-"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: demo-app
+  template:
+    metadata:
+      labels:
+        app: demo-app
+    spec:
+      containers:
+        - name: demo-app
+          # This image tag is managed automatically by ArgoCD Image Updater
+          # DO NOT edit this manually — it will be overwritten
+          image: ghcr.io/REPLACE_WITH_YOUR_GITHUB_USERNAME/demo-app:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 5000
+          env:
+            - name: APP_VERSION
+              value: "dynamic"  # Image Updater keeps the actual version in the image tag
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: demo-app
+spec:
+  selector:
+    app: demo-app
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 5000
+  type: ClusterIP
