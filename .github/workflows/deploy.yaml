@@ -1,6 +1,7 @@
-name: 🚀 CI/CD — Build, Push & Update Manifests
+name: 🚀 CI — Build & Push Docker Image
 
-# Trigger: automatically on every push to 'main'
+# Triggers on every push to 'main'
+# After this runs → register the repo in ArgoCD UI → ArgoCD deploys from k8s/deployment.yaml
 on:
   push:
     branches: ["main"]
@@ -8,23 +9,20 @@ on:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
-  MANIFEST_PATH: k8s/deployment.yaml
 
 jobs:
-  build-push-and-update:
+  build-and-push:
     runs-on: ubuntu-latest
     permissions:
-      contents: write    # Needed to commit the manifest update back to GitHub
-      packages: write    # Needed to push to GitHub Container Registry
+      contents: read     # Read the source code
+      packages: write    # Push image to GitHub Container Registry (GHCR)
 
     steps:
-      # 1. 📥 Checkout code
+      # 1. 📥 Checkout the code
       - name: Checkout Code
         uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
 
-      # 2. 🔑 Login to GitHub Container Registry (GHCR)
+      # 2. 🔑 Login to GitHub Container Registry
       - name: Log in to GHCR
         uses: docker/login-action@v3
         with:
@@ -32,49 +30,42 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # 3. 🏷️ Generate the image tag from the commit SHA
-      - name: Generate Image Tag
-        id: tag
-        run: |
-          SHORT_SHA=$(git rev-parse --short HEAD)
-          IMAGE_TAG="sha-${SHORT_SHA}"
-          FULL_IMAGE="${{ env.REGISTRY }}/${{ github.repository_owner }}/$(basename ${{ env.IMAGE_NAME }}):${IMAGE_TAG}"
-          FULL_IMAGE=$(echo "$FULL_IMAGE" | tr '[:upper:]' '[:lower:]')
-          echo "tag=${IMAGE_TAG}" >> $GITHUB_OUTPUT
-          echo "full_image=${FULL_IMAGE}" >> $GITHUB_OUTPUT
-          echo "📦 Image will be: ${FULL_IMAGE}"
+      # 3. 🏷️ Generate image tags
+      #    Creates: ghcr.io/username/demo-app:sha-abc1234  AND  :latest
+      - name: Extract Docker Metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=sha,prefix=sha-,format=short
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
 
-      # 4. 🏗️ Build & Push Docker Image to GHCR
+      # 4. 🏗️ Set up Docker Buildx (for efficient image builds)
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      # 5. 🚢 Build the Docker image and push to GHCR
       - name: Build and Push Docker Image
         uses: docker/build-push-action@v5
         with:
           context: .
           push: true
-          tags: ${{ steps.tag.outputs.full_image }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # 5. 📝 Update the manifest with the new image tag
-      #    ArgoCD watches this file in GitHub — this commit triggers the deployment
-      - name: Update Manifest with New Image
+      # 6. ✅ Summary
+      - name: Print Summary
         run: |
-          echo "✍️ Updating ${MANIFEST_PATH} with image: ${{ steps.tag.outputs.full_image }}"
-          sed -i "s|image: .*|image: ${{ steps.tag.outputs.full_image }}|g" ${{ env.MANIFEST_PATH }}
-          echo "✅ Manifest updated:"
-          grep "image:" ${{ env.MANIFEST_PATH }}
-
-      # 6. 💾 Commit the manifest change and push back to GitHub
-      #    This is what ArgoCD detects → it reads the new image tag → deploys to cluster
-      - name: Commit and Push Manifest Update
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add ${{ env.MANIFEST_PATH }}
-          git commit -m "ci: update image to ${{ steps.tag.outputs.tag }} [skip ci]"
-          git push
+          echo "======================================"
+          echo "✅ Image pushed to GHCR successfully!"
+          echo "--------------------------------------"
+          echo "Tags:"
+          echo "${{ steps.meta.outputs.tags }}"
+          echo "======================================"
           echo ""
-          echo "✅ Manifest pushed to GitHub."
-          echo "🔄 ArgoCD will now detect this change and deploy to the cluster."
+          echo "Next step: Register this repo in ArgoCD UI"
+          echo "  → Settings → Repositories → Add repo"
+          echo "  → Applications → New App → Path: k8s"

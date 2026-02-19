@@ -7,7 +7,7 @@ metadata:
   annotations:
     # 🤖 ArgoCD Image Updater: automatically detects new images pushed to GHCR
     # and updates this deployment without any manual intervention
-    argocd-image-updater.argoproj.io/image-list: demo-app=ghcr.io/REPLACE_WITH_YOUR_GITHUB_USERNAME/demo-app
+    argocd-image-updater.argoproj.io/image-list: demo-app=ghcr.io/USHER-PB/demo-app
     argocd-image-updater.argoproj.io/demo-app.update-strategy: latest
     argocd-image-updater.argoproj.io/demo-app.tag-match: "^sha-"
 spec:
@@ -24,7 +24,7 @@ spec:
         - name: demo-app
           # This image tag is managed automatically by ArgoCD Image Updater
           # DO NOT edit this manually — it will be overwritten
-          image: ghcr.io/REPLACE_WITH_YOUR_GITHUB_USERNAME/demo-app:latest
+          image: ghcr.io/USHER-PB/demo-app:latest
           imagePullPolicy: Always
           ports:
             - containerPort: 5000
